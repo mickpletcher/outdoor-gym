@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Outdoor Gym 3D — Highland Reserves</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0d1117; overflow: hidden; font-family: -apple-system, sans-serif; }
+    canvas { display: block; }
+    #info {
+      position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
+      color: #555; font-size: 12px; pointer-events: none; white-space: nowrap;
+      letter-spacing: 0.04em;
+    }
+    #title {
+      position: fixed; top: 16px; left: 20px;
+      color: #FFD700; font-size: 15px; font-weight: 600;
+      letter-spacing: 0.06em; opacity: 0.85; pointer-events: none;
+    }
+    #title span { color: #888; font-weight: 400; font-size: 12px; display: block; margin-top: 2px; }
+  </style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div id="title">OUTDOOR GYM<span>Highland Reserves · Pleasant View, TN</span></div>
+  <div id="info">Drag to orbit &nbsp;·&nbsp; Scroll to zoom &nbsp;·&nbsp; Right-click to pan</div>
+
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script>
+(function () {
+  const canvas = document.getElementById('c');
+  let W = window.innerWidth, H = window.innerHeight;
+
+  const scene    = new THREE.Scene();
+  const camera   = new THREE.PerspectiveCamera(55, W / H, 0.1, 100);
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setSize(W, H);
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setClearColor(0x0d1117);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
+  renderer.toneMapping       = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
+
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.06;
+  controls.target.set(0, 1.6, 0);
+  camera.position.set(7.5, 4.5, 8.5);
+
+  // ── Materials ────────────────────────────────────────────────────────────
+  const M = (hex, opts) => new THREE.MeshStandardMaterial(Object.assign({ color: hex }, opts || {}));
+  const woodMat       = M(0x7a5c3a, { roughness: 0.85 });
+  const woodEndMat    = M(0x6a4e30, { roughness: 0.9  });
+  const steelMat      = M(0x909090, { metalness: 0.85, roughness: 0.25 });
+  const darkSteel     = M(0x606060, { metalness: 0.9,  roughness: 0.2  });
+  const ringMat       = M(0xddbb77, { metalness: 0.3,  roughness: 0.5  });
+  const strapMat      = M(0x222222, { roughness: 1.0  });
+  const pierMat       = M(0x999990, { roughness: 0.95 });
+  const groundMat     = M(0x5e4d38, { roughness: 1.0  });
+  const boltMat       = M(0xaaaaaa, { metalness: 0.9,  roughness: 0.2  });
+  const bracketMat    = M(0x888888, { metalness: 0.8,  roughness: 0.3  });
+  const metalRoofMat  = M(0x8a9090, { metalness: 0.45, roughness: 0.55 });
+  const solarMat      = M(0x0d2a45, { metalness: 0.15, roughness: 0.25, emissive: 0x081525, emissiveIntensity: 0.3 });
+  const solarGridMat  = M(0x2a5080, { roughness: 0.4  });
+  const solarFrameMat = M(0x777777, { metalness: 0.7,  roughness: 0.35 });
+  const ledMat        = M(0xffffff, { emissive: 0xfff4cc, emissiveIntensity: 2.5, roughness: 1.0 });
+  const ctrlMat       = M(0x334433, { roughness: 0.8  });
+  const dipBarMat     = M(0x555566, { metalness: 0.8,  roughness: 0.25 });
+  const wireMat       = M(0x111111, { roughness: 0.9  });
+  const pm1           = M(0xc8aa88, { roughness: 0.95 });
+  const pm2           = M(0xb89474, { roughness: 0.95 });
+
+  // ── Ground ───────────────────────────────────────────────────────────────
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(24, 24), groundMat);
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  scene.add(ground);
+
+  // ── Paver pad (instanced) ────────────────────────────────────────────────
+  const PW = 0.195, PD = 0.095, PH = 0.042, COLS = 22, ROWS = 16;
+  const pGeo = new THREE.BoxGeometry(PW, PH, PD);
+  const iM1  = new THREE.InstancedMesh(pGeo, pm1, COLS * ROWS);
+  const iM2  = new THREE.InstancedMesh(pGeo, pm2, COLS * ROWS);
+  iM1.receiveShadow = iM2.receiveShadow = true;
+  const D = new THREE.Object3D();
+  const tW = COLS * (PW + 0.01), tD = ROWS * (PD + 0.01);
+  let i1 = 0, i2 = 0;
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    D.position.set(-tW/2 + c*(PW+0.01) + PW/2, PH/2, -tD/2 + r*(PD+0.01) + PD/2);
+    D.rotation.set(0,0,0); D.updateMatrix();
+    ((r+c)%2===0 ? iM1 : iM2).setMatrixAt((r+c)%2===0 ? i1++ : i2++, D.matrix);
+  }
+  iM1.instanceMatrix.needsUpdate = iM2.instanceMatrix.needsUpdate = true;
+  scene.add(iM1); scene.add(iM2);
+
+  // ── Constants ────────────────────────────────────────────────────────────
+  const Y0   = PH, PS = 0.14, postH = 2.85;
+  const lx   = -2.3, rx = 2.3, fz = 0.55, bz = -0.55;
+  const topY = Y0 + postH - 0.1, midY = Y0 + 1.78;
+
+  // Helpers
+  function mesh(geo, mat, x, y, z, rx, rz) {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x||0, y||0, z||0);
+    if (rx) m.rotation.x = rx;
+    if (rz) m.rotation.z = rz;
+    m.castShadow = m.receiveShadow = true;
+    scene.add(m); return m;
+  }
+  function hBar(x, y, z, len, mat, r) {
+    mesh(new THREE.CylinderGeometry(r,r,len,14), mat, x, y, z, 0, Math.PI/2);
+  }
+
+  // ── Posts + piers ────────────────────────────────────────────────────────
+  function makePost(x, z) {
+    mesh(new THREE.BoxGeometry(PS, postH, PS), woodMat, x, Y0+postH/2, z);
+    mesh(new THREE.BoxGeometry(PS+0.002,0.01,PS+0.002), woodEndMat, x, Y0+postH, z);
+  }
+  [lx,rx].forEach(x => { makePost(x, fz); makePost(x, bz); });
+
+  function makePier(x, z) {
+    mesh(new THREE.CylinderGeometry(0.155,0.17,0.22,16), pierMat, x, 0.11, z);
+    mesh(new THREE.BoxGeometry(PS+0.04,0.02,PS+0.04), bracketMat, x, 0.23, z);
+    [-PS/2-0.01, PS/2+0.01].forEach(ox => mesh(new THREE.BoxGeometry(0.012,0.08,PS+0.04), bracketMat, x+ox, 0.28, z));
+    mesh(new THREE.CylinderGeometry(0.012,0.012,0.12,8), boltMat, x, 0.17, z);
+  }
+  [lx,rx].forEach(x => { makePier(x, fz); makePier(x, bz); });
+
+  // ── Bars ─────────────────────────────────────────────────────────────────
+  hBar(0, topY, fz, 4.7, steelMat, 0.038); hBar(0, topY, bz, 4.7, steelMat, 0.038);
+  hBar(0, midY, fz, 4.7, darkSteel, 0.035); hBar(0, midY, bz, 4.7, darkSteel, 0.035);
+  [lx, rx].forEach(x => {
+    mesh(new THREE.BoxGeometry(PS-0.01,0.14,1.15), woodMat, x, topY-0.07, 0);
+    mesh(new THREE.BoxGeometry(PS-0.01,0.09,1.15), woodMat, x, midY, 0);
+  });
+  [lx+0.001, rx-0.001].forEach(x => [fz, bz].forEach(z => {
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.014,0.014,PS+0.04,8), boltMat);
+    b.rotation.z = Math.PI/2; b.position.set(x, topY, z); scene.add(b);
+    const b2 = b.clone(); b2.position.set(x, midY, z); scene.add(b2);
+  }));
+
+  // ── Rings ─────────────────────────────────────────────────────────────────
+  [[-0.65, fz],[0.65, fz]].forEach(([x, z]) => {
+    mesh(new THREE.TorusGeometry(0.14,0.018,10,36), ringMat, x, topY-0.75, z);
+    mesh(new THREE.CylinderGeometry(0.007,0.007,0.75,6), strapMat, x, topY-0.375, z);
+  });
+
+  // ── Dip bars ──────────────────────────────────────────────────────────────
+  const dipY = Y0 + 1.32;
+  [-0.24, 0.24].forEach(xo => {
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(0.028,0.028,1.05,10), dipBarMat);
+    b.rotation.x = Math.PI/2; b.position.set(lx+xo, dipY, 0); b.castShadow = true; scene.add(b);
+    [-0.42, 0.42].forEach(z => mesh(new THREE.CylinderGeometry(0.022,0.022,0.42,8), dipBarMat, lx+xo, dipY-0.25, z));
+  });
+
+  // ── Shed roof ─────────────────────────────────────────────────────────────
+  const backExt = 0.42, backTopY = topY + backExt;
+  [lx, rx].forEach(x => {
+    mesh(new THREE.BoxGeometry(PS, backExt, PS), woodMat, x, topY+backExt/2, bz);
+    mesh(new THREE.BoxGeometry(PS+0.002,0.01,PS+0.002), woodEndMat, x, backTopY, bz);
+  });
+  mesh(new THREE.BoxGeometry(5.0,0.14,PS), woodMat, 0, backTopY-0.07, bz);
+  mesh(new THREE.BoxGeometry(5.0,0.14,PS), woodMat, 0, topY-0.07, fz);
+
+  const SA  = Math.atan2(backExt, 1.1);
+  const ZS  = 1.5;
+  const SL  = Math.sqrt(ZS*ZS + (backExt*ZS/1.1)**2);
+  const rW  = 5.2, rCY = (backTopY + topY) / 2 + 0.03;
+
+  const roofPanel = new THREE.Mesh(new THREE.BoxGeometry(rW, 0.025, SL), metalRoofMat);
+  roofPanel.rotation.x = SA; roofPanel.position.set(0, rCY, 0);
+  roofPanel.castShadow = roofPanel.receiveShadow = true; scene.add(roofPanel);
+
+  [-1.9,-0.65,0.65,1.9].forEach(xr => {
+    const r = new THREE.Mesh(new THREE.BoxGeometry(0.055,0.12,SL+0.02), woodMat);
+    r.rotation.x = SA; r.position.set(xr, rCY-0.065, 0); r.castShadow = true; scene.add(r);
+  });
+
+  const fLen = Math.sqrt(1.1*1.1 + backExt*backExt);
+  [lx, rx].forEach(x => {
+    const f = new THREE.Mesh(new THREE.BoxGeometry(PS-0.01,0.14,fLen+0.35), woodMat);
+    f.rotation.x = SA; f.position.set(x, (topY+backTopY)/2, 0); f.castShadow = true; scene.add(f);
+  });
+
+  // ── Solar panels ──────────────────────────────────────────────────────────
+  const sNy = Math.cos(SA)*0.05, sNz = -Math.sin(SA)*0.05;
+  [-0.85, 0.85].forEach(px => {
+    const p = new THREE.Mesh(new THREE.BoxGeometry(1.15,0.04,0.58), solarMat);
+    p.rotation.x = SA; p.position.set(px, rCY+sNy+0.01, sNz); p.castShadow = true; scene.add(p);
+    const fr = new THREE.Mesh(new THREE.BoxGeometry(1.18,0.02,0.61), solarFrameMat);
+    fr.rotation.x = SA; fr.position.set(px, rCY+sNy+0.015, sNz); scene.add(fr);
+    for (let i = 0; i < 4; i++) {
+      const s = new THREE.Mesh(new THREE.BoxGeometry(1.11,0.005,0.006), solarGridMat);
+      s.rotation.x = SA; s.position.set(px, rCY+sNy+0.038, sNz-0.21+i*0.14); scene.add(s);
+    }
+    for (let i = 0; i < 7; i++) {
+      const s = new THREE.Mesh(new THREE.BoxGeometry(0.005,0.005,0.54), solarGridMat);
+      s.rotation.x = SA; s.position.set(px-0.53+i*(1.06/6), rCY+sNy+0.038, sNz); scene.add(s);
+    }
+    const pts = [
+      new THREE.Vector3(px, backTopY-0.05, bz+0.05),
+      new THREE.Vector3(lx+0.09, backTopY-0.15, bz+0.08),
+      new THREE.Vector3(lx+0.09, midY-0.25, bz+0.08)
+    ];
+    scene.add(new THREE.Mesh(
+      new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 20, 0.008, 6, false), wireMat
+    ));
+  });
+
+  // ── Charge controller + LEDs ──────────────────────────────────────────────
+  mesh(new THREE.BoxGeometry(0.18,0.12,0.06), ctrlMat, lx+0.1, midY-0.28, bz+0.04);
+  mesh(new THREE.BoxGeometry(0.1,0.06,0.005),
+    M(0x00cc66, { emissive: 0x00cc44, emissiveIntensity: 1.0 }), lx+0.1, midY-0.28, bz+0.073);
+
+  const ledY = topY + 0.18;
+  [0.15,-0.05,-0.25].forEach(lz => mesh(new THREE.BoxGeometry(4.5,0.012,0.025), ledMat, 0, ledY, lz));
+  [-1.8,-0.6,0.6,1.8].forEach(lpx => {
+    const pl = new THREE.PointLight(0xfff4cc, 0.5, 4.0);
+    pl.position.set(lpx, ledY-0.08, 0); scene.add(pl);
+  });
+
+  // ── Dimension labels ──────────────────────────────────────────────────────
+  const GOLD = 0xFFD700;
+  const lineMat2 = new THREE.LineBasicMaterial({ color: GOLD, depthTest: false });
+
+  function dimLine(ax,ay,az,bx,by,bz2,tickAxis) {
+    scene.add(new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(ax,ay,az), new THREE.Vector3(bx,by,bz2)]), lineMat2
+    ));
+    const ts = 0.13;
+    [[ax,ay,az],[bx,by,bz2]].forEach(([px,py,pz]) => {
+      let t1, t2;
+      if (tickAxis==='y') { t1=[px,py+ts,pz]; t2=[px,py-ts,pz]; }
+      else if (tickAxis==='x') { t1=[px+ts,py,pz]; t2=[px-ts,py,pz]; }
+      else { t1=[px,py,pz+ts]; t2=[px,py,pz-ts]; }
+      scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...t1),new THREE.Vector3(...t2)]),lineMat2));
+    });
+  }
+  function makeLabel(text,x,y,z) {
+    const cv = document.createElement('canvas'); cv.width=340; cv.height=76;
+    const ctx = cv.getContext('2d');
+    ctx.fillStyle='rgba(8,8,18,0.9)'; ctx.fillRect(0,0,340,76);
+    ctx.strokeStyle='#FFD700'; ctx.lineWidth=2.5; ctx.strokeRect(2,2,336,72);
+    ctx.fillStyle='#FFD700'; ctx.font='bold 28px Arial';
+    ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(text,170,38);
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(cv), depthTest: false, transparent: true }));
+    sp.scale.set(1.5,0.336,1); sp.position.set(x,y,z); scene.add(sp);
+  }
+  function leader(ax,ay,az,bx,by,bz2) {
+    scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(ax,ay,az),new THREE.Vector3(bx,by,bz2)]),
+      new THREE.LineBasicMaterial({color:GOLD,depthTest:false,transparent:true,opacity:0.45})));
+  }
+
+  dimLine(lx, 0.35, fz+0.6, rx, 0.35, fz+0.6, 'y');
+  leader(lx,0,fz,lx,0.35,fz+0.6); leader(rx,0,fz,rx,0.35,fz+0.6);
+  makeLabel('WIDTH  15 ft  (4.6 m)', 0, 0.67, fz+0.6);
+
+  dimLine(lx-0.55,0,fz, lx-0.55,topY,fz, 'x');
+  leader(lx,0,fz,lx-0.55,0,fz); leader(lx,topY,fz,lx-0.55,topY,fz);
+  makeLabel('FRONT HT  9 ft  (2.8 m)', lx-1.1, topY/2, fz);
+
+  dimLine(lx-0.55,0,bz, lx-0.55,backTopY,bz, 'x');
+  leader(lx,0,bz,lx-0.55,0,bz); leader(lx,backTopY,bz,lx-0.55,backTopY,bz);
+  makeLabel("REAR HT  10'-6\"  (3.2 m)", lx-1.15, backTopY/2, bz);
+
+  dimLine(rx+0.55,0.55,fz, rx+0.55,0.55,bz, 'y');
+  leader(rx,0,fz,rx+0.55,0.55,fz); leader(rx,0,bz,rx+0.55,0.55,bz);
+  makeLabel("DEPTH  3'-6\"  (1.1 m)", rx+1.15, 0.55, 0);
+
+  // ── Lighting ──────────────────────────────────────────────────────────────
+  scene.add(new THREE.AmbientLight(0xfff0e8, 0.5));
+  const sun = new THREE.DirectionalLight(0xfff5d0, 1.5);
+  sun.position.set(7,12,8); sun.castShadow = true;
+  sun.shadow.mapSize.set(2048,2048);
+  sun.shadow.camera.left=-8; sun.shadow.camera.right=8;
+  sun.shadow.camera.top=10; sun.shadow.camera.bottom=-8;
+  sun.shadow.camera.far=40; sun.shadow.bias=-0.001;
+  scene.add(sun);
+  const fill = new THREE.DirectionalLight(0xb0c8ff, 0.4);
+  fill.position.set(-5,4,-3); scene.add(fill);
+
+  // ── Render loop ───────────────────────────────────────────────────────────
+  function animate() { requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); }
+  animate();
+
+  window.addEventListener('resize', () => {
+    W = innerWidth; H = innerHeight;
+    camera.aspect = W / H; camera.updateProjectionMatrix();
+    renderer.setSize(W, H);
+  });
+})();
+  </script>
+</body>
+</html>
